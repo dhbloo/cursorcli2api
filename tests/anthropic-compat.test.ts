@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  AnthropicMessagesRequestSchema,
   anthropicRequestToChatRequest,
   chatCompletionToAnthropicResponse,
 } from "../src/lib/anthropic-compat.js";
@@ -186,6 +187,33 @@ test("inbound with system prompt", () => {
   assert.equal(chat.messages.length, 2);
   assert.equal(chat.messages[0].role, "system");
   assert.equal(chat.messages[0].content, "You are helpful");
+});
+
+test("inbound system role messages fold into the system prompt", () => {
+  const parsed = AnthropicMessagesRequestSchema.safeParse({
+    model: "claude:sonnet",
+    system: "Top-level system",
+    messages: [
+      { role: "system", content: "Inline system A" },
+      { role: "user", content: "hello" },
+      {
+        role: "system",
+        content: [{ type: "text", text: "Inline system B" }],
+      },
+    ],
+    max_tokens: 100,
+  });
+
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+
+  const chat = anthropicRequestToChatRequest(parsed.data);
+
+  assert.equal(chat.messages.length, 2);
+  assert.equal(chat.messages[0].role, "system");
+  assert.equal(chat.messages[0].content, "Top-level system\n\nInline system A\n\nInline system B");
+  assert.equal(chat.messages[1].role, "user");
+  assert.equal(chat.messages[1].content, "hello");
 });
 
 test("inbound tool_use without text content → empty text + tool_calls", () => {

@@ -30,7 +30,7 @@ const AnthropicContentBlockSchema = z.union([
 
 const AnthropicMessageSchema = z
   .object({
-    role: z.enum(["user", "assistant"]),
+    role: z.enum(["user", "assistant", "system"]),
     content: AnthropicContentBlockSchema,
   })
   .passthrough();
@@ -162,14 +162,20 @@ function anthropicContentToChatContent(content: unknown): unknown {
 
 export function anthropicRequestToChatRequest(req: AnthropicMessagesRequest): ChatCompletionRequest {
   const messages: ChatMessage[] = [];
+  const systemParts: string[] = [];
 
   const systemText = anthropicSystemToString(req.system);
   if (systemText.trim()) {
-    messages.push({ role: "system", content: systemText });
+    systemParts.push(systemText);
   }
 
   for (const msg of req.messages) {
-    if (msg.role === "assistant") {
+    if (msg.role === "system") {
+      const inlineSystemText = anthropicSystemToString(msg.content);
+      if (inlineSystemText.trim()) {
+        systemParts.push(inlineSystemText);
+      }
+    } else if (msg.role === "assistant") {
       const toolCalls = extractToolCalls(msg.content);
       const chatMsg: ChatMessage = {
         role: "assistant",
@@ -197,6 +203,10 @@ export function anthropicRequestToChatRequest(req: AnthropicMessagesRequest): Ch
         }
       }
     }
+  }
+
+  if (systemParts.length > 0) {
+    messages.unshift({ role: "system", content: systemParts.join("\n\n") });
   }
 
   return {
